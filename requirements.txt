@@ -1,0 +1,6 @@
+re
+xml
+base64
+riposte
+pywinrm
+requests
