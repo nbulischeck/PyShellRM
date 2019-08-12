@@ -1,0 +1,6 @@
+server:
+    endpoint: http://10.10.10.1:5985/wsman
+    transport: ntlm
+    username: User
+    password: Password
+    server_cert_validation: ignore

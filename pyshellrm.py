@@ -1,21 +1,23 @@
 import re
 import xml
 import winrm
+import argparse
 import requests
 from base64 import b64encode
+from pathlib import Path
 from riposte import Riposte
-
-p = winrm.protocol.Protocol(
-    endpoint='',
-    transport='',
-    username=r'',
-    password='',
-    server_cert_validation=''
-)
+from collections import defaultdict
+from ruamel.yaml import YAML
 
 pyshellrm = Riposte(prompt="pyshellrm:~$ ")
+pyshellrm._parser.add_argument("config", help="path to config.yml")
+
+CFG_HOSTS = None
 CUR_SHELL = None
+CUR_SESSN = None
 SHELL_IDS = []
+
+SHELL_LIST = lambda: [_[0] for _ in SHELL_IDS]
 
 upload_tpl = '''\
 $to = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath("DEST")
@@ -68,9 +70,9 @@ def clean_error(msg):
 
 def run_cmd(command, args=()):
     try:
-        command_id = p.run_command(CUR_SHELL, command, args)
-        rs = winrm.Response(p.get_command_output(CUR_SHELL, command_id))
-        p.cleanup_command(CUR_SHELL, command_id)
+        command_id = CUR_SESSN.run_command(CUR_SHELL, command, args)
+        rs = winrm.Response(CUR_SESSN.get_command_output(CUR_SHELL, command_id))
+        CUR_SESSN.cleanup_command(CUR_SHELL, command_id)
     except winrm.exceptions.WinRMTransportError:
         return winrm.Response((None, b"Transport Error", None))
     return rs
@@ -95,10 +97,11 @@ def quit():
 @pyshellrm.command("close")
 @shell_required
 def close():
+    global CUR_SHELL, CUR_SESSN
+
     try:
-        global CUR_SHELL
-        p.close_shell(CUR_SHELL)
-        CUR_SHELL = None
+        CUR_SESSN.close_shell(CUR_SHELL)
+        CUR_SHELL, CUR_SESSN = None, None
     except winrm.exceptions.WinRMTransportError as e:
         pyshellrm.error(e)
 
@@ -128,23 +131,26 @@ def upload(local_path: str, remote_path: str):
 
 @pyshellrm.command("unset")
 def unset_shell():
-    global CUR_SHELL
-    CUR_SHELL = None
+    global CUR_SHELL, CUR_SESSN
+    CUR_SHELL, CUR_SESSN = None, None
 
 @pyshellrm.command("set")
 def set_shell(shell: str):
-    global CUR_SHELL
-    if shell not in SHELL_IDS:
+    global CUR_SHELL, CUR_SESSN
+
+    if shell not in SHELL_LIST():
         pyshellrm.error(f"{shell} not in shell list.")
         return
+
     CUR_SHELL = shell
+    CUR_SESSN = dict(SHELL_IDS)[shell]
     pyshellrm.info(f"Current Shell: {CUR_SHELL}")
 
 @pyshellrm.complete("set")
 def set_completer(text, line, start_index, end_index):
     return [
         shell_id
-        for shell_id in SHELL_IDS
+        for shell_id in SHELL_LIST()
         if shell_id.startswith(text)
     ]
 
@@ -153,14 +159,33 @@ def list_sessions():
     if not SHELL_IDS:
         pyshellrm.error("No active sessions")
     else:
-        pyshellrm.info(*SHELL_IDS)
+        pyshellrm.info(*SHELL_LIST())
+
+@pyshellrm.command("hosts")
+def list_hosts():
+    if not CFG_HOSTS:
+        pyshellrm.error("No active sessions")
+    else:
+        pyshellrm.info(*CFG_HOSTS)
 
 @pyshellrm.command("connect")
-def connect():
+def connect(host: str):
     global SHELL_IDS
+
+    host = CFG_HOSTS[host]
+    p = winrm.protocol.Protocol(
+        endpoint  = host.get("endpoint" , None),
+        transport = host.get("transport", 'ntlm'),
+        username  = host.get("username" , r''),
+        password  = host.get("password" , r''),
+        server_cert_validation = \
+            host.get("server_cert_validation", 'ignore')
+    )
+
     pyshellrm.status(f"Connecting to {p.transport.endpoint}")
     try:
-        SHELL_IDS.append(p.open_shell())
+        shell_id = p.open_shell()
+        SHELL_IDS.append((shell_id, p))
     except requests.exceptions.ConnectTimeout:
         pyshellrm.error(f"Failed to connect to {p.transport.endpoint}")
         return
@@ -175,4 +200,32 @@ def connect():
         return
     pyshellrm.success(f"Connected to {p.transport.endpoint}")
 
+@pyshellrm.complete("connect")
+def connect_completer(text, line, start_index, end_index):
+    return [
+        host
+        for host in CFG_HOSTS.keys()
+        if host.startswith(text)
+    ]
+
+def get_config(config_path):
+    global CFG_HOSTS
+
+    config = Path(config_path)
+    if not config.is_file():
+        print("Config file not found")
+        quit()
+
+    with open(config_path, 'r') as cfg:
+        yaml = YAML(typ="safe")
+        CFG_HOSTS = yaml.load(cfg)
+
+    for key in CFG_HOSTS:
+        d = CFG_HOSTS[key]
+        if not d.get("endpoint", None):
+            print("Every host must have an endpoint")
+            quit()
+
+arguments = pyshellrm._parser.parse_args()
+get_config(arguments.config)
 pyshellrm.run()

