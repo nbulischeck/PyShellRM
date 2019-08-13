@@ -1,7 +1,5 @@
-re
-xml
-base64
-riposte
-pywinrm
 requests
+riposte
 ruamel.yaml
+pypsrp
+requests_ntlm
